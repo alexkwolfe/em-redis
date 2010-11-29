@@ -2,7 +2,7 @@ require File.expand_path(File.dirname(__FILE__) + "/test_helper.rb")
 require 'logger'
 
 EM.describe EM::Protocols::Redis do
-  default_timeout 1
+  default_timeout 10
 
   before do
     @r = EM::Protocols::Redis.connect :db => 14
@@ -271,21 +271,23 @@ EM.describe EM::Protocols::Redis do
     @r.lrem('list', 1, 'hello') { |r| r.should == 1 }
     @r.lrange('list', 0, -1) { |r| r.should == ['goodbye']; done }
   end
+  
+  it "should be able to publish" do
+    @r.publish('baz', 'bar') { |r| r.should == 0; done }
+  end
 
-  it "should be able to pop values from a list and push them onto a temp list(RPOPLPUSH)" do
+  it "should be able to pop values from a list and push them onto a temp list (RPOPLPUSH)" do
     @r.rpush "list", 'one'
     @r.rpush "list", 'two'
     @r.rpush "list", 'three'
-    @r.type('list') { |r| r.should == "list" }
-    @r.llen('list') { |r| r.should == 3 }
     @r.lrange('list', 0, -1) { |r| r.should == ['one', 'two', 'three'] }
-    @r.lrange('tmp', 0, -1) { |r| r.should == [] }
-    @r.rpoplpush('list', 'tmp') { |r| r.should == 'three' }
-    @r.lrange('tmp', 0, -1) { |r| r.should == ['three'] }
-    @r.rpoplpush('list', 'tmp') { |r| r.should == 'two' }
-    @r.lrange('tmp', 0, -1) { |r| r.should == ['two', 'three'] }
-    @r.rpoplpush('list', 'tmp') { |r| r.should == 'one' }
-    @r.lrange('tmp', 0, -1) { |r| r.should == ['one', 'two', 'three']; done }
+    @r.rpoplpush('list', 'tmp') do |r| 
+      r.should == 'three'
+      @r.lrange('tmp', 0, -1) do |r| 
+        r.should == ['three'] 
+        @r.lrange('list', 0, -1) { |r| r.should == ['one', 'two']; done }
+      end
+    end
   end
   #
   it "should be able add members to a set (SADD)" do
@@ -551,7 +553,11 @@ EM.describe EM::Protocols::Redis do
 
     # attempt to update a key that's not a zset
     @r["i_am_not_a_zet"] = "value"
-    # shouldn't raise error anymore
+    
+    # on_error must be defined in order to suppress an error being raised.
+    @r.on_error do |code|
+      puts "error: #{code}"
+    end
     @r.zset_incr_by("i_am_not_a_zet", 23, "element") { |r| r.should == nil }
 
     @r.delete("hackers")
@@ -570,9 +576,10 @@ EM.describe EM::Protocols::Redis do
   it "should be able to flush the database (FLUSHDB)" do
     @r['key1'] = 'keyone'
     @r['key2'] = 'keytwo'
-    @r.keys('*') { |r| r.sort.should == ['foo', 'key1', 'key2'].sort } #foo from before
-    @r.flushdb
-    @r.keys('*') { |r| r.should == []; done }
+    @r.keys('*') do |r| 
+      r.sort.should == ['foo', 'key1', 'key2'].sort 
+      @r.flushdb { @r.keys('*') { |keys| keys.should == []; done } }
+    end #foo from before
   end
   #
   it "should be able to SELECT database" do

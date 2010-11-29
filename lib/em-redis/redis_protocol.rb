@@ -25,6 +25,7 @@ module EventMachine
         "lpush"     => true,
         "lset"      => true,
         "lrem"      => true,
+        "publish"   => true,
         "sadd"      => true,
         "srem"      => true,
         "sismember" => true,
@@ -60,7 +61,7 @@ module EventMachine
         "renamenx"  => BOOLEAN_PROCESSOR,
         "expire"    => BOOLEAN_PROCESSOR,
         "select"    => BOOLEAN_PROCESSOR, # not in redis gem
-        "keys"      => lambda{|r| r.split(" ")},
+        "keys"      => lambda{|r| r.respond_to?(:split) ? r.split(" ") : r},
         "info"      => lambda{|r|
           info = {}
           r.each_line {|kv|
@@ -389,6 +390,7 @@ module EventMachine
         when MINUS
           # Missing, dispatch empty response
           dispatch_response(nil)
+          @error_callback.call(reply_args)
         # e.g. +OK
         when PLUS
           dispatch_response(reply_args)
@@ -411,7 +413,7 @@ module EventMachine
         #e.g. *2\r\n$1\r\na\r\n$1\r\nb\r\n 
         when ASTERISK
           multibulk_count = Integer(reply_args)
-          if multibulk_count == -1
+          if multibulk_count <= 0
             dispatch_response([])
           else
             start_multibulk(multibulk_count)

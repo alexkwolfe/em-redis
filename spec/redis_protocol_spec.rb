@@ -83,13 +83,15 @@ EM.describe EM::Protocols::Redis do
   end
 
   should "parse an inline error response" do
-    @c.call_command(["blarg"]) do |resp|
-      resp.should == nil
-      done
-    end
-    @c.receive_data "-FAIL\r\n"
+    lambda do
+      @c.call_command(["blarg"]) do |resp|
+        resp.should == nil
+        done
+      end
+      @c.receive_data "-FAIL\r\n"
+    end.should.raise(EM::P::Redis::RedisError)
   end
-
+  
   should "trigger a given error callback (specified with on_error) for inline error response instead of raising an error" do
     lambda do
       @c.call_command(["blarg"])
